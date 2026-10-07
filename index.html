@@ -32,7 +32,7 @@
 <body>
   <h2>Hierarchical Modeling: Claw Arm</h2>
   <p>Chain: base &rarr; lower arm &rarr; upper arm &rarr; hand &rarr; two fingers. Move a joint and every part after it follows.<br>
-  Line the claw up with a prop, press Grab, lift it, swivel, then press Release to drop it.<br>
+  Touch a prop with the tip of the claw and it sticks like a magnet. Lift it, swivel, then press Reset to drop it.<br>
   Drag the canvas to orbit. Arrow keys and w, s move the camera. Press F12 to see the console for debugging.<br>
   Edit the vertex and fragment shaders on the left to get the result instantly.</p>
   <p><a href="https://github.com/jrdnmrtnz12/cs512_HM_HW" style="color:#6cf">View source on GitHub</a></p>
@@ -55,7 +55,10 @@
       <input type="range" id="wristSlider" min="-120" max="90" step="1" value="-35">
       <span id="wristOut">-35&deg;</span>
     </label>
-    <button id="grabBtn">Grab</button>
+    <label>Fingers
+      <input type="range" id="fingersSlider" min="-26" max="12" step="1" value="-26">
+      <span id="fingersOut">-26&deg;</span>
+    </label>
     <button id="resetBtn">Reset</button>
   </div>
   <div id="status" style="margin-bottom: 10px; min-height: 1.4em;"></div>
@@ -302,28 +305,26 @@ void main() {
     }
 
     // #2: joint angles in degrees, set by the sliders (DEG converts them to radians for the matrices).
-    // The fingers open and close with the claw: gripTarget is where they are heading (0 open, 1 closed)
-    // and gripCur is where they are right now.
+    // The fingers slider is the angle of finger A; finger B turns the opposite way so they pinch.
     const DEG = Math.PI / 180;
-    const DEFAULT_JOINTS = { swivel: 0, shoulder: 55, elbow: -95, wrist: -35 };
+    const DEFAULT_JOINTS = { swivel: 0, shoulder: 55, elbow: -95, wrist: -35, fingers: -26 };
     let joint = Object.assign({}, DEFAULT_JOINTS);
-    let clawClosed = false, gripTarget = 0, gripCur = 0;
 
-    // #4: the props the claw can pick up. Each one rests on the floor, can be held (then it is
-    // a child of the hand), or can be falling after it is let go.
+    // #4: the props the magnet can pick up. Each one either rests on the floor or is held
+    // (then it is a child of the hand). Reset puts it back at its home spot.
     const PICKUP_RADIUS = 0.45;
     const props = [
       { name: 'basketball', mesh: 'basketball', scale: [0.4, 0.4, 0.4], halfH: 0.24, home: [1.905, 0.24, 1.100], holdAxis: null, holdAngle: 0 },
       { name: 'cube', mesh: 'cube', scale: [0.22, 0.22, 0.22], halfH: 0.22, home: [-1.032, 0.22, -1.475], holdAxis: null, holdAngle: 0 },
       { name: 'football', mesh: 'football', scale: [0.4, 0.4, 0.4], halfH: 0.18, home: [2.631, 0.18, -0.958], holdAxis: 'y', holdAngle: Math.PI / 2 }
     ];
-    props.forEach(p => { p.pos = p.home.slice(); p.state = 'rest'; p.vy = 0; p.node = null; });
+    props.forEach(p => { p.pos = p.home.slice(); p.state = 'rest'; p.node = null; });
     let held = null;
 
-    // #2: keeps a number between a low and a high limit (finger speed, camera limits, floor edges)
+    // #2: keeps a number between a low and a high limit (used for the camera limits)
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-    // #4: where the claw is closing, in world coordinates: a point between the fingertips in
+    // #4: where the claw touches things, in world coordinates: a point between the fingertips in
     // the hand's own frame, carried through every matrix above it (world = hand matrix * (0.85, 0, 0, 1)).
     // Written out: 0.85 of the matrix's x-axis column, plus its position column.
     function gripPoint() {
@@ -332,63 +333,41 @@ void main() {
       return [w[0] * 0.85 + w[12], w[1] * 0.85 + w[13], w[2] * 0.85 + w[14]];
     }
 
-    // #4: finds the closest prop that is resting on the floor, by straight-line distance
-    // from the grip point G. Returns that prop and how far away it is.
-    function nearestProp(G) {
-      let best = null, bestD = Infinity;
-      props.forEach(p => {
-        if (p.state !== 'rest') return;
-        const dx = p.pos[0] - G[0], dy = p.pos[1] - G[1], dz = p.pos[2] - G[2];
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (d < bestD) { bestD = d; best = p; }
-      });
-      return best ? { prop: best, dist: bestD } : null;
-    }
-
-    const grabBtn = document.getElementById("grabBtn");
     const statusEl = document.getElementById("status");
 
-    // #4: closing the claw picks up the nearest prop in range by hanging it under the hand;
-    // opening it takes the prop back out of the hand and lets it fall to the floor
-    function setClaw(closed) {
-      clawClosed = closed;
-      gripTarget = closed ? 1 : 0; // #2: the fingers ease toward closed (1) or open (0) in render
-      grabBtn.textContent = closed ? 'Release' : 'Grab';
-      if (closed) {
-        const G = gripPoint();
-        const hit = G && nearestProp(G);
-        if (hit && hit.dist <= PICKUP_RADIUS) {
-          held = hit.prop;
-          held.state = 'held';
-          // #4: the prop becomes a new part of the tree, a child of the hand at the grip point,
-          // so the hand's matrix now carries it along with every joint above
-          held.node = {
-            name: held.name, level: 4, axis: held.holdAxis, angle: held.holdAngle, offset: [0.85, 0, 0],
-            segs: [piece(held.mesh, [0, 0, 0], held.scale)], children: [], world: null
-          };
-          hand.children.push(held.node);
-        }
-      } else if (held) {
-        // #4: read where the held prop is in the world (the position column of its matrix),
-        // keep that spot on the floor area, then take it out of the tree and let it fall from there
-        const w = held.node.world;
-        const at = w ? [w[12], w[13], w[14]] : held.pos;
-        held.pos = [clamp(at[0], -3.3, 3.3), Math.max(at[1], held.halfH), clamp(at[2], -2.8, 2.8)];
-        hand.children = hand.children.filter(c => c !== held.node);
-        held.node = null;
-        held.state = 'falling';
-        held.vy = 0;
-        held = null;
-      }
+    // #4: sticks a prop to the hand. The prop becomes a new part of the tree, a child of the hand
+    // placed at the grip point, so the hand's matrix now carries it along with every joint above.
+    function attachToHand(p) {
+      held = p;
+      held.state = 'held';
+      held.node = {
+        name: held.name, level: 4, axis: held.holdAxis, angle: held.holdAngle, offset: [0.85, 0, 0],
+        segs: [piece(held.mesh, [0, 0, 0], held.scale)], children: [], world: null
+      };
+      hand.children.push(held.node);
     }
 
-    // #2: sliders set the joint angles; buttons close/open the claw and put everything back.
+    // #4: the magnet. If the claw isn't holding anything and the grip point gets within PICKUP_RADIUS
+    // of a prop on the floor (straight-line distance in x, y and z), that prop sticks to the hand.
+    function checkTouch() {
+      const G = gripPoint();
+      if (!G || held) return;
+      props.forEach(p => {
+        if (held || p.state !== 'rest') return;
+        const dx = p.pos[0] - G[0], dy = p.pos[1] - G[1], dz = p.pos[2] - G[2];
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d <= PICKUP_RADIUS) attachToHand(p);
+      });
+    }
+
+    // #2: sliders set the joint angles (the fingers too); the Reset button puts everything back.
     // Each row is: which joint, its slider, and the text that shows its angle.
     const jointControls = [
       ['swivel', 'swivelSlider', 'swivelOut'],
       ['shoulder', 'shoulderSlider', 'shoulderOut'],
       ['elbow', 'elbowSlider', 'elbowOut'],
-      ['wrist', 'wristSlider', 'wristOut']
+      ['wrist', 'wristSlider', 'wristOut'],
+      ['fingers', 'fingersSlider', 'fingersOut']
     ];
     jointControls.forEach(([key, sliderId, outId]) => {
       const slider = document.getElementById(sliderId);
@@ -400,11 +379,6 @@ void main() {
       // #2: let go of the slider after using it, so the camera keys work again
       slider.addEventListener("change", () => slider.blur());
     });
-
-    // #4: the Grab/Release button flips the claw between open and closed
-    document.getElementById("grabBtn").onclick = function () {
-      setClaw(!clawClosed);
-    };
 
     // Mouse and keyboard interactions
     // dragging sideways turns the whole scene about the base (orbitY), up/down tilts it (orbitX,
@@ -438,7 +412,8 @@ void main() {
       }
     });
 
-    // #2: puts the sliders, claw, props and camera back to how they started
+    // #2: the Reset button puts the sliders, props and camera back to how they started. A held prop
+    // is taken out of the hand's children and goes back to its home spot, which is how you drop it.
     function resetAll() {
       joint = Object.assign({}, DEFAULT_JOINTS);
       jointControls.forEach(([key, sliderId, outId]) => {
@@ -449,9 +424,7 @@ void main() {
         hand.children = hand.children.filter(c => c !== held.node);
         held = null;
       }
-      props.forEach(p => { p.pos = p.home.slice(); p.state = 'rest'; p.vy = 0; p.node = null; });
-      clawClosed = false; gripTarget = 0; gripCur = 0;
-      grabBtn.textContent = 'Grab';
+      props.forEach(p => { p.pos = p.home.slice(); p.state = 'rest'; p.node = null; });
       camX = 0; camY = -0.3; camZ = -10; orbitX = 0.45; orbitY = 0.6;
     }
     document.getElementById("resetBtn").onclick = resetAll;
@@ -461,56 +434,30 @@ void main() {
     let proj = perspective(fov, aspect, zNear, zFar);
 
     let startTime = Date.now();
-    let lastFrameTime = Date.now();
 
-    // #4: writes the line under the sliders: what the claw is holding, or which prop is closest
-    // and whether it is close enough to grab
+    // #4: writes the line under the sliders: what the claw is holding, or how to pick something up
     function updateStatus() {
-      const G = gripPoint();
-      if (held) {
-        statusEl.textContent = 'Holding: ' + held.name;
-      } else if (G) {
-        const hit = nearestProp(G);
-        if (hit) {
-          statusEl.textContent = 'Nearest prop: ' + hit.prop.name + ' (' + hit.dist.toFixed(2) + ' away)' +
-            (hit.dist <= PICKUP_RADIUS ? ' - in range, press Grab' : '');
-        } else {
-          statusEl.textContent = 'No props on the floor';
-        }
-      }
+      statusEl.textContent = held
+        ? 'Holding: ' + held.name + ' (press Reset to drop it)'
+        : 'Touch a prop with the tip of the claw to pick it up';
     }
 
-    // draws one frame: updates the joints, fingers and falling props, then draws the floor, the props and the arm
+    // draws one frame: sets the joint angles, draws the floor, props and arm, then checks if the claw touches a prop
     function render() {
       gl.enable(gl.DEPTH_TEST);
       gl.clearColor(0.06, 0.07, 0.10, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // #2: seconds since the last frame, so motion speed doesn't depend on frame rate
-      // (capped so one slow frame can't cause a big jump)
       let now = Date.now();
-      let dt = Math.min((now - lastFrameTime) / 1000, 0.05);
-      lastFrameTime = now;
 
-      // #2: the fingers slide toward open or closed; finger A and B turn opposite ways so they pinch
-      gripCur += clamp(gripTarget - gripCur, -3 * dt, 3 * dt);
-      const g = -0.45 + 0.65 * gripCur;
-      fingerA.angle = g;
-      fingerB.angle = -g;
-
-      // #2: the sliders' angles go onto the parts that turn at each joint
+      // #2: the sliders' angles go onto the parts that turn at each joint; finger A and B
+      // turn opposite ways so they pinch
       base.angle = joint.swivel * DEG;
       lowerArm.angle = joint.shoulder * DEG;
       upperArm.angle = joint.elbow * DEG;
       hand.angle = joint.wrist * DEG;
-
-      // #4: a prop that was let go speeds up downward until it lands on the floor
-      props.forEach(p => {
-        if (p.state !== 'falling') return;
-        p.vy -= 9.8 * dt;
-        p.pos[1] += p.vy * dt;
-        if (p.pos[1] <= p.halfH) { p.pos[1] = p.halfH; p.vy = 0; p.state = 'rest'; }
-      });
+      fingerA.angle = joint.fingers * DEG;
+      fingerB.angle = -joint.fingers * DEG;
 
       // camera: move the world away from the viewer, then orbit it about the base
       let modelViewMatrix = mat4Translate(mat4Identity(), [camX, camY, camZ]);
@@ -532,7 +479,7 @@ void main() {
         drawMesh(mesh.shadow, mat4Scale(mat4Translate(I, [G[0], 0.01, G[2]]), [0.2, 0.004, 0.2]));
       }
 
-      // #4: draw every prop on the floor or falling; a held prop is skipped here because it is drawn as part of the hand
+      // #4: draw every prop on the floor; a held prop is skipped here because it is drawn as part of the hand
       props.forEach(p => {
         if (p.state === 'held') return;
         drawMesh(mesh[p.mesh], mat4Scale(mat4Translate(I, p.pos), p.scale));
@@ -542,6 +489,8 @@ void main() {
       cur = mat4Identity();
       drawNode(base);
 
+      // #4: the hand's matrix is fresh now, so check whether the claw tip is touching a prop
+      checkTouch();
       updateStatus();
     }
 
