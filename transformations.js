@@ -145,8 +145,8 @@ function mat4RotateY(matrix, angle) {
     return result;
 }
 
-// #2: turns a matrix around the z axis, same style as the x and y versions above.
-// Joints that bend in the screen plane (shoulder, elbow, wrist, fingers) use this one.
+// #2: turns a matrix around the z axis, same as the x and y versions above.
+// the shoulder, elbow, wrist and fingers all bend up and down, so they use this one
 function mat4RotateZ(matrix, angle) {
     const c = Math.cos(angle);
     const s = Math.sin(angle);
@@ -168,7 +168,7 @@ function mat4RotateZ(matrix, angle) {
 }
 
 // #1: stretches or shrinks a matrix by different amounts on each axis, without
-// touching whatever position it's already placed at. Used to size each arm segment.
+// touching whatever position it's already placed at. used to size each arm piece
 function mat4Scale(matrix, scale) {
     const result = new Float32Array(matrix);
     result[0] = matrix[0] * scale[0];

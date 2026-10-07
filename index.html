@@ -37,7 +37,7 @@
   Edit the vertex and fragment shaders on the left to get the result instantly.</p>
   <p><a href="https://github.com/jrdnmrtnz12/cs512_HM_HW" style="color:#6cf">View source on GitHub</a></p>
 
-  <!-- #2: one slider per joint. Each one turns its joint and everything below it in the chain follows. -->
+  <!-- #2: one slider per joint. each one turns its joint and everything after it in the chain follows -->
   <div class="ctl" style="display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin-bottom: 8px;">
     <label>Base swivel
       <input type="range" id="swivelSlider" min="-180" max="180" step="1" value="0">
@@ -163,8 +163,8 @@ void main() {
     vertEditor.onkeyup = initShaderProgram;
     fragEditor.onkeyup = initShaderProgram;
 
-    // #1: loads one shape onto the GPU as three buffers: positions, colors, and which
-    // points join up into triangles. It only has to be done once per shape.
+    // #1: puts one shape on the GPU as three buffers (positions, colors, and which points
+    // connect into triangles). only has to be done once per shape
     function createMesh(data) {
       const mesh = { count: data.indices.length };
       mesh.vbo = gl.createBuffer();
@@ -179,7 +179,7 @@ void main() {
       return mesh;
     }
 
-    // #1: draws one shape. The matrix passed in is what places, sizes and turns it in the scene.
+    // #1: draws one shape. the matrix passed in decides where it goes, how big it is and how it's turned
     function drawMesh(mesh, modelMatrix) {
       gl.uniformMatrix4fv(uMTM, false, modelMatrix);
       gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vbo);
@@ -192,8 +192,8 @@ void main() {
       gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
     }
 
-    // #1: every shape in the scene. The arm parts and floor are the same box with different
-    // colors, the joints are balls, and the cube, basketball and football are the props.
+    // #1: every shape in the scene. the arm parts and floor are all the same box in different
+    // colors, the joints are balls, and the cube, basketball and football are the props
     const mesh = {
       floor: createMesh(makeBox([0.32, 0.36, 0.42])),
       base: createMesh(makeBox([0.45, 0.50, 0.62])),
@@ -208,31 +208,31 @@ void main() {
       football: createMesh(football)
     };
 
-    // #1: the arm as a tree. Each part has a frame placed at its joint (offset from its parent,
-    // turned about one axis by its angle) and one or more drawn pieces (a segment: where the
-    // piece sits inside that frame and how big it is). Children hang off their parent.
+    // #1: the arm as a tree. each part sits at its joint (an offset from its parent), turns by its
+    // own angle, and has one or more pieces to draw (where the shape sits and how big it is).
+    // the children of a part are the parts attached to it
     //   level 0 base (root) -> level 1 lower arm -> level 2 upper arm -> level 3 hand
     //   -> level 4 finger A and finger B (two branches off the hand)
-    // A child's offset is the far end of its parent's link, so it is twice the link's half-length.
+    // each joint sits at the far end of the bar before it, which is 2x that bar's half-length
 
-    // #1: makes one drawn piece of a part: which shape, where it sits in the part's frame,
-    // and how much it is stretched on each axis
+    // #1: makes one piece of a part: which shape, where it sits on the part,
+    // and how much it's stretched on each axis
     function piece(meshName, offset, scale) {
       return { mesh: mesh[meshName], offset: offset, scale: scale };
     }
 
-    // #1: level 4, a leaf. Its joint is at the tip of the hand, below center, and it turns about z to open/close
+    // #1: level 4, the end of the tree. joint is at the tip of the hand, below center, and it turns about z to open and close
     const fingerA = {
       name: 'fingerA', level: 4, axis: 'z', angle: 0, offset: [0.5, -0.4, 0],
       segs: [piece('finger', [0.25, 0, 0], [0.25, 0.06, 0.10])], children: [], world: null
     };
-    // #1: level 4, the other leaf. Same as finger A but above center, so the two can pinch together
+    // #1: level 4, the other finger. same as finger A but above center so the two pinch together
     const fingerB = {
       name: 'fingerB', level: 4, axis: 'z', angle: 0, offset: [0.5, 0.4, 0],
       segs: [piece('finger', [0.25, 0, 0], [0.25, 0.06, 0.10])], children: [], world: null
     };
-    // #1: level 3. The wrist is at the end of the upper arm (offset 1.5 = twice its half-length 0.75).
-    // Has two children, the fingers. Pieces: wrist ball, palm, and a crossbar the fingers hang from.
+    // #1: level 3. the wrist is at the end of the upper arm (offset 1.5 = 2x its half-length of 0.75).
+    // has two children, the fingers. pieces: wrist ball, palm, and a crossbar the fingers hang off
     const hand = {
       name: 'hand', level: 3, axis: 'z', angle: 0, offset: [1.5, 0, 0],
       segs: [
@@ -242,7 +242,7 @@ void main() {
       ],
       children: [fingerA, fingerB], world: null
     };
-    // #1: level 2. The elbow is at the end of the lower arm (offset 1.7 = twice its half-length 0.85).
+    // #1: level 2. the elbow is at the end of the lower arm (offset 1.7 = 2x its half-length of 0.85)
     const upperArm = {
       name: 'upperArm', level: 2, axis: 'z', angle: 0, offset: [1.7, 0, 0],
       segs: [
@@ -251,7 +251,7 @@ void main() {
       ],
       children: [hand], world: null
     };
-    // #1: level 1. The shoulder is at the top of the base column (1.0 up from the base's frame).
+    // #1: level 1. the shoulder is at the top of the base column (1.0 above the base)
     const lowerArm = {
       name: 'lowerArm', level: 1, axis: 'z', angle: 0, offset: [0, 1.0, 0],
       segs: [
@@ -260,8 +260,8 @@ void main() {
       ],
       children: [upperArm], world: null
     };
-    // #1: level 0, the root of the tree. Its frame is the world origin and it swivels about y,
-    // so turning it carries the whole arm. Pieces: the wide pedestal and the column on top of it.
+    // #1: level 0, the root of the tree. sits at the world origin and swivels about y so turning it
+    // carries the whole arm. pieces: the wide pedestal and the column on top of it
     const base = {
       name: 'base', level: 0, axis: 'y', angle: 0, offset: [0, 0, 0],
       segs: [
@@ -271,17 +271,17 @@ void main() {
       children: [lowerArm], world: null
     };
 
-    // #1: the current matrix and a stack to save it on. Going down into a part saves the
-    // parent's matrix; coming back out restores it, so sibling parts all start from the parent.
+    // #1: the current matrix and a stack to save it on. going down into a part saves the parent's
+    // matrix and coming back out restores it, so sibling parts all start from the parent
     let cur = mat4Identity();
     const matrixStack = [];
-    // #1: saves a copy of the current matrix on top of the stack
+    // #1: saves a copy of the current matrix on the stack
     function pushMatrix() { matrixStack.push(new Float32Array(cur)); }
-    // #1: puts the most recently saved matrix back as the current one
+    // #1: puts the last saved matrix back as the current one
     function popMatrix() { cur = matrixStack.pop(); }
 
-    // #1: moves the current matrix into a part's own frame: M_part = M_parent * T(offset) * R(angle).
-    // Place it at the joint, then turn it. The result is what gets handed down to the children.
+    // #1: works out a part's matrix from its parent's: M_part = M_parent * T * R
+    // (move to the joint, then turn). its children start from this matrix
     function applyFrameTransform(n) {
       cur = mat4Translate(cur, n.offset);
       if (n.axis === 'y') cur = mat4RotateY(cur, n.angle);
@@ -289,33 +289,37 @@ void main() {
       else if (n.axis === 'x') cur = mat4RotateX(cur, n.angle);
     }
 
-    // #1: draws a part, then all of its children, depth first: save the matrix, move into the
-    // part's frame, draw its pieces, draw each child, then restore the matrix.
+    // #1: draws a part and then each of its children, one branch at a time: save the matrix, move to
+    // the part's spot, draw its pieces, draw its children, then restore the matrix
     function drawNode(n) {
       pushMatrix();
       applyFrameTransform(n);
-      n.world = cur; // #1: remembered so the grip point can be worked out later
+      n.world = cur; // #1: keeps this part's matrix so its spot in the world can be looked up later (for picking things up)
       for (const s of n.segs) {
-        // #1: a piece is drawn with M_frame * T(piece) * S(piece). This is a throwaway copy, never
-        // saved back into cur, so a stretched part never stretches the parts attached to it.
+        // #1: a piece is drawn with M_part * T * S. the scale only goes on this copy and never gets saved
+        // back into cur, so stretching a bar doesn't stretch the parts attached to it
         drawMesh(s.mesh, mat4Scale(mat4Translate(cur, s.offset), s.scale));
       }
-      for (const c of n.children) drawNode(c); // #1: each child starts from this part's frame
+      for (const c of n.children) drawNode(c); // #1: each child starts from this part's matrix
       popMatrix();
     }
 
-    // #2: joint angles in degrees, set by the sliders (DEG converts them to radians for the matrices).
-    // The fingers slider is the angle of finger A; finger B turns the opposite way so they pinch.
+    // #2: joint angles in degrees from the sliders (DEG turns them into radians for the matrices).
+    // the fingers slider is finger A's angle and finger B turns the opposite way so they pinch
     const DEG = Math.PI / 180;
     const DEFAULT_JOINTS = { swivel: 0, shoulder: 55, elbow: -95, wrist: -35, fingers: -26 };
     let joint = Object.assign({}, DEFAULT_JOINTS);
 
-    // #4: the props the magnet can pick up. Each one either rests on the floor or is held
-    // (then it is a child of the hand). Reset puts it back at its home spot.
+    // #4: the props the magnet can pick up. each one is either resting on the floor or held
+    // (then it's a child of the hand). Reset puts it back at its home spot
     const PICKUP_RADIUS = 0.45;
     const props = [
       { name: 'basketball', mesh: 'basketball', scale: [0.4, 0.4, 0.4], halfH: 0.24, home: [1.905, 0.24, 1.100], holdAxis: null, holdAngle: 0 },
       { name: 'cube', mesh: 'cube', scale: [0.22, 0.22, 0.22], halfH: 0.22, home: [-1.032, 0.22, -1.475], holdAxis: null, holdAngle: 0 },
+      // #4: the football is long along x and the hand points along x too, so when it sticks to the hand
+      // it gets turned 90 degrees about y (holdAxis and holdAngle). that lays it across the fingers
+      // instead of poking out through the palm. same move-then-turn as the joints, just a fixed
+      // angle instead of a slider
       { name: 'football', mesh: 'football', scale: [0.4, 0.4, 0.4], halfH: 0.18, home: [2.631, 0.18, -0.958], holdAxis: 'y', holdAngle: Math.PI / 2 }
     ];
     props.forEach(p => { p.pos = p.home.slice(); p.state = 'rest'; p.node = null; });
@@ -324,9 +328,10 @@ void main() {
     // #2: keeps a number between a low and a high limit (used for the camera limits)
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-    // #4: where the claw touches things, in world coordinates: a point between the fingertips in
-    // the hand's own frame, carried through every matrix above it (world = hand matrix * (0.85, 0, 0, 1)).
-    // Written out: 0.85 of the matrix's x-axis column, plus its position column.
+    // #4: where the claw tip is in the world. on the hand it's 0.85 out along x (between the
+    // fingertips), and the hand's matrix turns that into a world spot: world = hand matrix * (0.85, 0, 0, 1).
+    // in the code w[12], w[13], w[14] is where the hand is and w[0], w[1], w[2] is the way its x points,
+    // so the tip is the hand's position plus 0.85 steps in that direction
     function gripPoint() {
       const w = hand.world;
       if (!w) return null;
@@ -335,8 +340,8 @@ void main() {
 
     const statusEl = document.getElementById("status");
 
-    // #4: sticks a prop to the hand. The prop becomes a new part of the tree, a child of the hand
-    // placed at the grip point, so the hand's matrix now carries it along with every joint above.
+    // #4: sticks a prop to the hand by making it a child of the hand in the tree, placed at the grip
+    // point. now it moves with the hand whenever a joint above it moves
     function attachToHand(p) {
       held = p;
       held.state = 'held';
@@ -347,8 +352,8 @@ void main() {
       hand.children.push(held.node);
     }
 
-    // #4: the magnet. If the claw isn't holding anything and the grip point gets within PICKUP_RADIUS
-    // of a prop on the floor (straight-line distance in x, y and z), that prop sticks to the hand.
+    // #4: the magnet. if nothing is held and the grip point gets within PICKUP_RADIUS of a prop on
+    // the floor (straight-line distance using x, y and z), that prop sticks to the hand
     function checkTouch() {
       const G = gripPoint();
       if (!G || held) return;
@@ -360,8 +365,8 @@ void main() {
       });
     }
 
-    // #2: sliders set the joint angles (the fingers too); the Reset button puts everything back.
-    // Each row is: which joint, its slider, and the text that shows its angle.
+    // #2: sliders set the joint angles (fingers too) and the Reset button puts everything back.
+    // each row is the joint, its slider, and the text showing its angle
     const jointControls = [
       ['swivel', 'swivelSlider', 'swivelOut'],
       ['shoulder', 'shoulderSlider', 'shoulderOut'],
@@ -371,18 +376,18 @@ void main() {
     ];
     jointControls.forEach(([key, sliderId, outId]) => {
       const slider = document.getElementById(sliderId);
-      // #2: dragging a slider stores that joint's angle and updates its readout
+      // #2: dragging a slider saves that joint's angle and updates the number next to it
       slider.addEventListener("input", e => {
         joint[key] = parseFloat(e.target.value);
         document.getElementById(outId).textContent = Math.round(joint[key]) + '°';
       });
-      // #2: let go of the slider after using it, so the camera keys work again
+      // #2: lets go of the slider after using it so the camera keys work again
       slider.addEventListener("change", () => slider.blur());
     });
 
     // Mouse and keyboard interactions
-    // dragging sideways turns the whole scene about the base (orbitY), up/down tilts it (orbitX,
-    // kept between limits so it can't flip over)
+    // drag sideways to spin the whole scene around the base (orbitY), drag up/down to tilt it
+    // (orbitX, limited so it can't flip over)
     let mouseDown = false, lastX, lastY, orbitX = 0.45, orbitY = 0.6;
     let camX = 0, camY = -0.3, camZ = -10;
 
@@ -398,7 +403,7 @@ void main() {
       lastX = e.clientX; lastY = e.clientY;
     });
 
-    // the camera keys are ignored while typing in a shader box or using a slider
+    // camera keys are ignored while typing in a shader box or using a slider
     document.addEventListener('keydown', e => {
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
       const step = 0.2;
@@ -412,8 +417,8 @@ void main() {
       }
     });
 
-    // #2: the Reset button puts the sliders, props and camera back to how they started. A held prop
-    // is taken out of the hand's children and goes back to its home spot, which is how you drop it.
+    // #2: Reset puts the sliders, props and camera back to how they started. a held prop gets
+    // removed from the hand's children and goes back to its home spot, which is how it drops
     function resetAll() {
       joint = Object.assign({}, DEFAULT_JOINTS);
       jointControls.forEach(([key, sliderId, outId]) => {
@@ -442,7 +447,7 @@ void main() {
         : 'Touch a prop with the tip of the claw to pick it up';
     }
 
-    // draws one frame: sets the joint angles, draws the floor, props and arm, then checks if the claw touches a prop
+    // draws one frame: sets the joint angles, draws the floor, props and arm, then checks if the claw is touching a prop
     function render() {
       gl.enable(gl.DEPTH_TEST);
       gl.clearColor(0.06, 0.07, 0.10, 1);
@@ -450,7 +455,7 @@ void main() {
 
       let now = Date.now();
 
-      // #2: the sliders' angles go onto the parts that turn at each joint; finger A and B
+      // #2: the slider angles go onto the parts that turn at each joint, and finger A and B
       // turn opposite ways so they pinch
       base.angle = joint.swivel * DEG;
       lowerArm.angle = joint.shoulder * DEG;
@@ -459,7 +464,7 @@ void main() {
       fingerA.angle = joint.fingers * DEG;
       fingerB.angle = -joint.fingers * DEG;
 
-      // camera: move the world away from the viewer, then orbit it about the base
+      // camera: move the world away from the viewer, then orbit it around the base
       let modelViewMatrix = mat4Translate(mat4Identity(), [camX, camY, camZ]);
       modelViewMatrix = mat4RotateY(modelViewMatrix, orbitY);
       modelViewMatrix = mat4RotateX(modelViewMatrix, orbitX);
@@ -469,27 +474,27 @@ void main() {
       gl.uniformMatrix4fv(uPM, false, proj);
       gl.uniformMatrix4fv(uMVM, false, modelViewMatrix);
 
-      // #1: the floor and the props are placed straight from the world (identity * T * S); they are not part of the arm's tree
+      // #1: the floor and props are placed straight in the world (move, then scale), not through the arm's tree
       const I = mat4Identity();
       drawMesh(mesh.floor, mat4Scale(mat4Translate(I, [0, -0.2, 0]), [3.5, 0.2, 3.0]));
 
-      // #4: a dark flat disc on the floor under the claw, so you can see where it is above the floor
+      // #4: a dark flat disc on the floor under the claw so it's easier to see where the claw is above the floor
       const G = gripPoint();
       if (G && G[1] > 0) {
         drawMesh(mesh.shadow, mat4Scale(mat4Translate(I, [G[0], 0.01, G[2]]), [0.2, 0.004, 0.2]));
       }
 
-      // #4: draw every prop on the floor; a held prop is skipped here because it is drawn as part of the hand
+      // #4: draws every prop on the floor. a held prop is skipped here since it gets drawn with the hand
       props.forEach(p => {
         if (p.state === 'held') return;
         drawMesh(mesh[p.mesh], mat4Scale(mat4Translate(I, p.pos), p.scale));
       });
 
-      // #1: draw the whole arm starting from the base; everything held by the hand comes with it
+      // #1: draws the whole arm starting from the base, and anything held by the hand comes along
       cur = mat4Identity();
       drawNode(base);
 
-      // #4: the hand's matrix is fresh now, so check whether the claw tip is touching a prop
+      // #4: once the arm is drawn the hand's spot is up to date, so check if the claw tip is touching a prop
       checkTouch();
       updateStatus();
     }
